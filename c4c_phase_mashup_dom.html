@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    margin: 0;
+    padding: 8px;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+  }
+  .phase-box {
+    border-left: 4px solid #ccc;
+    padding: 10px 14px;
+    background: #f7f7f7;
+    border-radius: 0 6px 6px 0;
+  }
+  .phase-title {
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .phase-desc {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.7;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .phase-desc li::before {
+    content: "→ ";
+    color: #999;
+  }
+  .phase-desc li {
+    margin-bottom: 2px;
+  }
+  .phase-empty {
+    color: #aaa;
+    font-style: italic;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div id="phase-box" class="phase-box">
+  <div id="phase-title" class="phase-title phase-empty">Wahrscheinlichkeit auswählen...</div>
+  <ul class="phase-desc" id="phase-list"></ul>
+</div>
+
+<script>
+
+/* ============================================================
+   PHASE DEFINITIONS — keyed by display text from C4C dropdown
+   These match exactly what C4C shows in the Wahrscheinlichkeit field
+   ============================================================ */
+var phases = {
+  "1% Recognized": {
+    color: "#888888",
+    EN: { label: "1% Recognized", items: ["Very early stage – customer has given an indication","Future projects on the horizon, not yet approved","Projects on hold but not fully stopped"] },
+    DE: { label: "1% Erkannt", items: ["Sehr frühe Phase – Kunde hat etwas angedeutet","Zukünftige Projekte am Horizont, noch nicht genehmigt","Projekte auf Eis, aber nicht vollständig gestoppt"] }
+  },
+  "10% Identified": {
+    color: "#378ADD",
+    EN: { label: "10% Identified", items: ["Indicated project, rough need can be specified","Contact person at customer is known","Customer requests a reference quote (e.g. for budget planning)"] },
+    DE: { label: "10% Identifiziert", items: ["Angezeigtes Projekt, grober Bedarf spezifizierbar","Ansprechpartner beim Kunden bekannt","Kunde fragt Referenzangebot an (z.B. für Budget)"] }
+  },
+  "30% Potential": {
+    color: "#639922",
+    EN: { label: "30% Potential", items: ["First meeting done & application known","Technical capabilities validated (tool pre-selection)","Customer has received a price indication"] },
+    DE: { label: "30% Potenzial", items: ["Erstes Meeting & Anwendung bekannt","Technische Fähigkeiten validiert (Tool Pre-Selection)","Kunde kennt eine Preisindikation"] }
+  },
+  "50% Sample and Technical Validation": {
+    color: "#EF9F27",
+    EN: { label: "50% Sample & Technical Validation", items: ["Technical solution validated","Technical specification completed","Scope of supply aligned"] },
+    DE: { label: "50% Sample & Technische Validierung", items: ["Technische Lösung validiert","Technische Spezifikation abgeschlossen","Lieferumfang abgestimmt"] }
+  },
+  "70% Commercial negotiation phase": {
+    color: "#E24B4A",
+    EN: { label: "70% Commercial Negotiation Phase", items: ["Commercial negotiation phase active"] },
+    DE: { label: "70% Kommerzielle Verhandlungsphase", items: ["Kommerzielle Verhandlungsphase aktiv"] }
+  },
+  "90% Price & Terms agreed": {
+    color: "#D85A30",
+    EN: { label: "90% Price & Terms Agreed", items: ["Price agreed","Contract agreed","Contract pending signature"] },
+    DE: { label: "90% Preis & Konditionen vereinbart", items: ["Preis vereinbart","Vertrag vereinbart","Vertrag wartet auf Unterschrift"] }
+  },
+  "100% Contract signed or PO received": {
+    color: "#1D9E75",
+    EN: { label: "100% Contract Signed or PO Received", items: ["Contract signed and/or PO received"] },
+    DE: { label: "100% Vertrag unterzeichnet oder PO erhalten", items: ["Vertrag unterzeichnet und/oder PO erhalten"] }
+  }
+};
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function showPhase(key, language) {
+  // Try exact match first
+  var p = phases[key];
+
+  // If no exact match, try partial match (handles minor text differences)
+  if (!p) {
+    var keys = Object.keys(phases);
+    for (var i = 0; i < keys.length; i++) {
+      if (key.toLowerCase().indexOf(keys[i].toLowerCase().substring(0, 6)) !== -1) {
+        p = phases[keys[i]];
+        break;
+      }
+    }
+  }
+
+  if (!p) return;
+
+  var lang = String(language || 'EN').substring(0, 2).toUpperCase();
+  var t = p[lang] || p['EN'];
+
+  var box   = document.getElementById('phase-box');
+  var title = document.getElementById('phase-title');
+  var list  = document.getElementById('phase-list');
+
+  box.style.borderLeftColor = p.color;
+  title.style.color         = p.color;
+  title.className           = 'phase-title';
+  title.innerText           = t.label;
+
+  list.innerHTML = '';
+  t.items.forEach(function(item) {
+    var li = document.createElement('li');
+    li.innerText = item;
+    list.appendChild(li);
+  });
+}
+
+/* ============================================================
+   DOM READER
+   Reads the Wahrscheinlichkeit field value directly from the
+   parent C4C page and updates the display accordingly.
+   Runs every 1.5 seconds to catch any changes.
+   ============================================================ */
+function readFromParent() {
+  try {
+    var parent = window.parent || window.top;
+    if (!parent) return;
+
+    // Get language from parent
+    var lang = 'EN';
+    try {
+      var langMeta = parent.document.querySelector('meta[name="language"]');
+      if (langMeta) lang = langMeta.getAttribute('content');
+      // Also try html lang attribute
+      var htmlLang = parent.document.documentElement.getAttribute('lang');
+      if (htmlLang) lang = htmlLang;
+    } catch(e) {}
+
+    // Search for the probability field by looking for known phase texts
+    var allElements = parent.document.querySelectorAll('span, div, input, label');
+    var phaseKeys = Object.keys(phases);
+
+    for (var i = 0; i < allElements.length; i++) {
+      var text = (allElements[i].innerText || allElements[i].value || '').trim();
+      for (var j = 0; j < phaseKeys.length; j++) {
+        if (text === phaseKeys[j]) {
+          showPhase(phaseKeys[j], lang);
+          return;
+        }
+      }
+    }
+  } catch(e) {
+    // Cross-origin errors are expected in some configurations
+  }
+}
+
+/* ============================================================
+   ALSO LISTEN FOR URL PARAMS (for editor preview)
+   Use these test values in the editor:
+   probability=30%25+Potential   or   probability=111
+   ============================================================ */
+function getParam(name) {
+  var url = window.location.search;
+  var regex = new RegExp('[?&]' + name + '=([^&#]*)');
+  var result = regex.exec(url);
+  return result ? decodeURIComponent(result[1]) : null;
+}
+
+var previewProb = getParam('probability');
+if (previewProb) {
+  showPhase(previewProb, getParam('language') || 'EN');
+}
+
+/* ============================================================
+   ALSO LISTEN FOR postMessage FROM C4C
+   ============================================================ */
+window.addEventListener('message', function(event) {
+  var data = event.data;
+  if (!data) return;
+  var val = data.Probability || data.probability || data.SalesPhase || data.Z005_probability || '';
+  var lng = data.LogonLanguage || data.language || 'EN';
+  if (val) showPhase(val, lng);
+});
+
+// Start polling the parent DOM every 1.5 seconds
+setInterval(readFromParent, 1500);
+// Also run immediately
+readFromParent();
+
+</script>
+</body>
+</html>
