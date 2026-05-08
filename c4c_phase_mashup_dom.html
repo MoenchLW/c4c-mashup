@@ -185,6 +185,7 @@ function getParam(name) {
 }
 
 var previewProb = getParam('probability');
+if (previewProb) previewProb = previewProb.replace(/\+/g, ' ');
 if (previewProb) {
   showPhase(previewProb, getParam('language') || 'EN');
 }
